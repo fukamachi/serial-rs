@@ -50,20 +50,44 @@ impl COMPort {
             CreateFileW(name.as_ptr(), GENERIC_READ | GENERIC_WRITE, 0, ptr::null_mut(), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0 as HANDLE)
         };
 
-        let timeout = Duration::from_millis(100);
-
         if handle != INVALID_HANDLE_VALUE {
-            let mut port = COMPort {
-                handle: handle,
-                timeout: timeout
-            };
-
-            try!(port.set_timeout(timeout));
-            Ok(port)
+            COMPort::new_from_raw_handle(handle, 100)
         }
         else {
             Err(super::error::last_os_error())
         }
+    }
+
+    pub fn open_async<T: AsRef<OsStr> + ?Sized>(port: &T) -> ::Result<Self> {
+        let mut name = Vec::<u16>::new();
+
+        name.extend(OsStr::new("\\\\.\\").encode_wide());
+        name.extend(port.as_ref().encode_wide());
+        name.push(0);
+
+        let handle = unsafe {
+            CreateFileW(name.as_ptr(), GENERIC_READ | GENERIC_WRITE, 0, ptr::null_mut(), OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0 as HANDLE)
+        };
+
+        if handle != INVALID_HANDLE_VALUE {
+            COMPort::new_from_raw_handle(handle, 0)
+        }
+        else {
+            Err(super::error::last_os_error())
+        }
+    }
+
+    fn new_from_raw_handle(handle: HANDLE, timeout_msec: u64) -> ::Result<Self> {
+        let timeout = Duration::from_millis(timeout_msec);
+
+        let mut port = COMPort {
+            handle: handle,
+            timeout: timeout
+        };
+
+        try!(port.set_timeout(timeout));
+
+        Ok(port)
     }
 
     fn escape_comm_function(&mut self, function: DWORD) -> ::Result<()> {
